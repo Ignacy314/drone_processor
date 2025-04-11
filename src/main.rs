@@ -80,7 +80,7 @@ fn main() {
                     // let avg = sorted.iter().sum::<f64>() / n_sorted as f64;
 
                     // retain modules with distance within +/- 25% of median
-                    modules.retain(|_, m| (median - m.dist).abs() < median / 4.0);
+                    // modules.retain(|_, m| (median - m.dist).abs() < median / 4.0);
 
                     // proceed with calculating drone position if at least 3 modules retained
                     if modules.len() < 3 {
