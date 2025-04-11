@@ -230,7 +230,9 @@ fn main() {
                         },
                     );
 
-                    log::debug!("Message {{ mac: {mac}, ip: {ip}, drone: {drone}, dist: {dist} }}")
+                    log::debug!(
+                        "Message {{ mac: {mac}, ip: {ip}, lat: {lat}, lon: {lon}, drone: {drone}, dist: {dist} }}"
+                    )
                 }
             }
         });
