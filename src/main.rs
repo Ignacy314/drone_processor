@@ -59,6 +59,7 @@ fn main() {
                 let detection = modules.iter().any(|(_, m)| m.drone);
 
                 if detection {
+                    modules.retain(|_, m| m.lon.is_finite() && m.lat.is_finite());
                     // remove outliers
 
                     // calculate median distance
