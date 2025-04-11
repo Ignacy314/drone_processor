@@ -7,6 +7,7 @@ use std::{
 };
 
 use eqsolver::multivariable::MultiVarNewtonFD;
+use flexi_logger::{Logger, with_thread};
 use geoconv::{CoordinateSystem, Degrees, Enu, Lle, Meters, Wgs84};
 use itertools::Itertools;
 use nalgebra::{Vector3, vector};
@@ -32,10 +33,19 @@ struct Point {
 }
 
 fn main() {
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Info)
-        .target(env_logger::Target::Stdout)
-        .build();
+    // env_logger::builder()
+    //     .filter_level(log::LevelFilter::Info)
+    //     .target(env_logger::Target::Stdout)
+    //     .build();
+
+    Logger::try_with_env_or_str("info")
+        .unwrap()
+        .log_to_stderr()
+        .format(with_thread)
+        .use_utc()
+        .start()
+        .unwrap();
+
     let modules: Arc<Mutex<HashMap<String, Module>>> = Arc::new(Mutex::new(HashMap::new()));
 
     spawn({

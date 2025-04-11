@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 env_logger = "0.11.8"
 eqsolver = "0.2.0"
+flexi_logger = "0.30.1"
 geoconv = "0.4.6"
 itertools = "0.14.0"
 log = "0.4.27"
