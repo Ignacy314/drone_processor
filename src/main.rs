@@ -23,6 +23,7 @@ struct Module {
     pub alt: f64,
     pub drone: bool,
     pub dist: f64,
+    pub updated: Instant,
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
@@ -59,7 +60,11 @@ fn main() {
                 let detection = modules.iter().any(|(_, m)| m.drone);
 
                 if detection {
-                    modules.retain(|_, m| m.lon.is_finite() && m.lat.is_finite());
+                    modules.retain(|_, m| {
+                        m.updated.elapsed() < Duration::from_millis(250)
+                            && m.lon.is_finite()
+                            && m.lat.is_finite()
+                    });
                     // remove outliers
 
                     // calculate median distance
@@ -228,6 +233,7 @@ fn main() {
                             alt: 0.0,
                             drone,
                             dist,
+                            updated: Instant::now(),
                         },
                     );
 
