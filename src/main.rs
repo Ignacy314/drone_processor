@@ -185,6 +185,7 @@ fn main() {
             //     Ok(response)
             // };
             let mut websocket = accept(stream.unwrap()).unwrap();
+            log::info!("WebSocket connection accepted");
 
             loop {
                 let msg = websocket.read().unwrap();
