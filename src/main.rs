@@ -1,11 +1,15 @@
 use std::{
     collections::HashMap,
+    fs::File,
+    io::BufWriter,
+    io::Write,
     net::TcpListener,
     sync::Arc,
     thread::{sleep, spawn},
     time::{Duration, Instant},
 };
 
+use chrono::Utc;
 use eqsolver::multivariable::MultiVarNewtonFD;
 use flexi_logger::{Logger, with_thread};
 use geoconv::{CoordinateSystem, Degrees, Enu, Lle, Meters, Wgs84};
@@ -47,6 +51,10 @@ fn main() {
         .start()
         .unwrap();
 
+    let mut csv =
+        BufWriter::new(File::create(format!("/home/ignacy/andros/{}.csv", Utc::now())).unwrap());
+    writeln!(csv, "time,lat,lon,alt").unwrap();
+
     let modules: Arc<Mutex<HashMap<String, Module>>> = Arc::new(Mutex::new(HashMap::new()));
 
     spawn({
@@ -55,40 +63,43 @@ fn main() {
             let read_period = Duration::from_millis(50);
             loop {
                 let start = Instant::now();
-                let mut modules = modules.lock().clone();
+
+                let mut lock = modules.lock();
+                // retain recently updated modules
+                lock.retain(|_, m| {
+                    m.updated.elapsed() < Duration::from_millis(250)
+                        && m.lon.is_finite()
+                        && m.lat.is_finite()
+                });
+                let modules = lock.clone();
+                drop(lock);
 
                 let detection = modules.iter().any(|(_, m)| m.drone);
 
                 if detection {
-                    modules.retain(|_, m| {
-                        m.updated.elapsed() < Duration::from_millis(250)
-                            && m.lon.is_finite()
-                            && m.lat.is_finite()
-                    });
                     // remove outliers
-
-                    if modules.len() >= 3 {
-                        // calculate median distance
-                        let sorted: Vec<f64> = modules
-                            .values()
-                            .map(|m| m.dist)
-                            .sorted_unstable_by(|a, b| a.total_cmp(b))
-                            .collect();
-
-                        let n_sorted = sorted.len();
-                        let median = if n_sorted % 2 == 0 {
-                            let n_half = n_sorted / 2;
-                            (sorted[n_half - 1] + sorted[n_half]) / 2.0
-                        } else {
-                            sorted[n_sorted / 2]
-                        };
-
-                        // calcualte average distance
-                        // let avg = sorted.iter().sum::<f64>() / n_sorted as f64;
-
-                        // retain modules with distance within +/- 25% of median
-                        // modules.retain(|_, m| (median - m.dist).abs() < median / 4.0);
-                    }
+                    // if modules.len() >= 3 {
+                    //     // calculate median distance
+                    //     let sorted: Vec<f64> = modules
+                    //         .values()
+                    //         .map(|m| m.dist)
+                    //         .sorted_unstable_by(|a, b| a.total_cmp(b))
+                    //         .collect();
+                    //
+                    //     let n_sorted = sorted.len();
+                    //     let median = if n_sorted % 2 == 0 {
+                    //         let n_half = n_sorted / 2;
+                    //         (sorted[n_half - 1] + sorted[n_half]) / 2.0
+                    //     } else {
+                    //         sorted[n_sorted / 2]
+                    //     };
+                    //
+                    //     // calcualte average distance
+                    //     // let avg = sorted.iter().sum::<f64>() / n_sorted as f64;
+                    //
+                    //     // retain modules with distance within +/- 25% of median
+                    //     modules.retain(|_, m| (median - m.dist).abs() < median / 4.0);
+                    // }
 
                     // proceed with calculating drone position if at least 3 modules retained
                     if modules.len() < 3 {
@@ -171,8 +182,17 @@ fn main() {
                                 },
                             );
 
-                            log::info!("{avg_solution:?}");
+                            log::debug!("{avg_solution:?}");
                             log::info!("{solution_lle:?}");
+                            writeln!(
+                                csv,
+                                "{},{},{},{}",
+                                Utc::now(),
+                                solution_lle.latitude.as_float(),
+                                solution_lle.longitude.as_float(),
+                                solution_lle.elevation.as_float()
+                            )
+                            .unwrap();
                         } else {
                             log::warn!("Failed to calculate drone position");
                         }
