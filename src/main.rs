@@ -201,7 +201,6 @@ fn main() {
                                 avg_solution.z += solution.z;
 
                                 solution_counter += 1;
-                                break;
                             }
 
                             if solution_counter > 0 {
