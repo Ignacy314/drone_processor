@@ -59,9 +59,10 @@ fn main() {
 
     spawn({
         let modules = modules.clone();
-        move || {
+        async move || {
             let read_period = Duration::from_millis(50);
             loop {
+                let client = reqwest::Client::new();
                 let (mut socket, _response) = match connect("ws://127.0.0.1:8080/andros/subscribe")
                 {
                     Ok(c) => c,
@@ -82,6 +83,17 @@ fn main() {
                     Err(err) => {
                         log::error!("Error sending drone WebSocket message: {err}");
                         continue;
+                    }
+                }
+                match client
+                    .post("127.0.0.1:8080/andros/publish")
+                    .body(format!("detection,{},{},{}", 52.1, 16.7, 21.2))
+                    .send()
+                    .await
+                {
+                    Ok(_) => {}
+                    Err(err) => {
+                        log::warn!("Failed to make POST request: {err}");
                     }
                 }
 
