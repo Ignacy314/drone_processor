@@ -59,10 +59,10 @@ fn main() {
 
     spawn({
         let modules = modules.clone();
-        async move || {
+        move || {
             let read_period = Duration::from_millis(50);
             loop {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 let (mut socket, _response) = match connect("ws://127.0.0.1:8080/andros/subscribe")
                 {
                     Ok(c) => c,
@@ -89,7 +89,6 @@ fn main() {
                     .post("127.0.0.1:8080/andros/publish")
                     .body(format!("detection,{},{},{}", 52.1, 16.7, 21.2))
                     .send()
-                    .await
                 {
                     Ok(_) => {}
                     Err(err) => {

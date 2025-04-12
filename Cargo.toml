@@ -13,6 +13,6 @@ itertools = "0.14.0"
 log = "0.4.27"
 nalgebra = "0.33.2"
 parking_lot = "0.12.3"
-reqwest = "0.12.15"
+reqwest = { version = "0.12.15", features = ["blocking"] }
 statrs = "0.18.0"
 tungstenite = "0.26.2"
