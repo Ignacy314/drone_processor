@@ -16,7 +16,7 @@ use geoconv::{CoordinateSystem, Degrees, Enu, Lle, Meters, Wgs84};
 use itertools::Itertools;
 use nalgebra::{Vector3, vector};
 use parking_lot::Mutex;
-use tungstenite::{accept, connect};
+use tungstenite::accept;
 
 #[derive(Clone, Copy)]
 struct Module {
@@ -63,38 +63,38 @@ fn main() {
             let read_period = Duration::from_millis(50);
             loop {
                 let client = reqwest::blocking::Client::new();
-                let (mut socket, _response) = match connect("ws://127.0.0.1:8080/andros/subscribe")
-                {
-                    Ok(c) => c,
-                    Err(e) => {
-                        log::error!("Website WebSocket connection error: {e}");
-                        sleep(Duration::from_millis(1000));
-                        continue;
-                    }
-                };
-                log::info!("Website WebSocket connected");
+                // let (mut socket, _response) = match connect("ws://127.0.0.1:8080/andros/subscribe")
+                // {
+                //     Ok(c) => c,
+                //     Err(e) => {
+                //         log::error!("Website WebSocket connection error: {e}");
+                //         sleep(Duration::from_millis(1000));
+                //         continue;
+                //     }
+                // };
+                // log::info!("Website WebSocket connected");
 
                 sleep(Duration::from_secs(1));
 
-                match socket.send(tungstenite::Message::Text(
-                    format!("detection,{},{},{}", 52.1, 16.7, 21.2).into(),
-                )) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        log::error!("Error sending drone WebSocket message: {err}");
-                        continue;
-                    }
-                }
-                // match client
-                //     .post("http://10.66.66.1:8080/andros/publish")
-                //     .body(format!("detection,{},{},{}", 52.1, 16.7, 21.2))
-                //     .send()
-                // {
+                // match socket.send(tungstenite::Message::Text(
+                //     format!("detection,{},{},{}", 52.1, 16.7, 21.2).into(),
+                // )) {
                 //     Ok(_) => {}
                 //     Err(err) => {
-                //         log::warn!("Failed to make POST request: {err}");
+                //         log::error!("Error sending drone WebSocket message: {err}");
+                //         continue;
                 //     }
                 // }
+                match client
+                    .post("http://10.66.66.1:8080/andros/publish")
+                    .body(format!("detection,{},{},{}", 52.1, 16.7, 21.2))
+                    .send()
+                {
+                    Ok(_) => {}
+                    Err(err) => {
+                        log::warn!("Failed to make POST request: {err}");
+                    }
+                }
 
                 loop {
                     let start = Instant::now();
@@ -230,18 +230,29 @@ fn main() {
                                 )
                                 .unwrap();
 
-                                match socket.send(tungstenite::Message::Text(
-                                    format!(
-                                        "detection,{},{},{}",
-                                        solution_lle.latitude.as_float(),
-                                        solution_lle.longitude.as_float(),
-                                        solution_lle.elevation.as_float()
-                                    )
-                                    .into(),
-                                )) {
+                                // match socket.send(tungstenite::Message::Text(
+                                //     format!(
+                                //         "detection,{},{},{}",
+                                //         solution_lle.latitude.as_float(),
+                                //         solution_lle.longitude.as_float(),
+                                //         solution_lle.elevation.as_float()
+                                //     )
+                                //     .into(),
+                                // )) {
+                                //     Ok(_) => {}
+                                //     Err(err) => {
+                                //         log::error!("Error sending drone WebSocket message: {err}");
+                                //         break;
+                                //     }
+                                // }
+                                match client
+                                    .post("http://10.66.66.1:8080/andros/publish")
+                                    .body(format!("detection,{},{},{}", 52.1, 16.7, 21.2))
+                                    .send()
+                                {
                                     Ok(_) => {}
                                     Err(err) => {
-                                        log::error!("Error sending drone WebSocket message: {err}");
+                                        log::error!("Failed to make POST request: {err}");
                                         break;
                                     }
                                 }
