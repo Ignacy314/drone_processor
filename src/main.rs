@@ -16,7 +16,7 @@ use geoconv::{CoordinateSystem, Degrees, Enu, Lle, Meters, Wgs84};
 use itertools::Itertools;
 use nalgebra::{Vector3, vector};
 use parking_lot::Mutex;
-use tungstenite::accept;
+use tungstenite::{accept, connect};
 
 #[derive(Clone, Copy)]
 struct Module {
@@ -62,146 +62,188 @@ fn main() {
         move || {
             let read_period = Duration::from_millis(50);
             loop {
-                let start = Instant::now();
-
-                let mut lock = modules.lock();
-                // retain recently updated modules
-                lock.retain(|_, m| {
-                    m.updated.elapsed() < Duration::from_millis(250)
-                        && m.lon.is_finite()
-                        && m.lat.is_finite()
-                });
-                let modules = lock.clone();
-                drop(lock);
-
-                let detection = modules.iter().any(|(_, m)| m.drone);
-
-                if detection {
-                    // remove outliers
-                    // if modules.len() >= 3 {
-                    //     // calculate median distance
-                    //     let sorted: Vec<f64> = modules
-                    //         .values()
-                    //         .map(|m| m.dist)
-                    //         .sorted_unstable_by(|a, b| a.total_cmp(b))
-                    //         .collect();
-                    //
-                    //     let n_sorted = sorted.len();
-                    //     let median = if n_sorted % 2 == 0 {
-                    //         let n_half = n_sorted / 2;
-                    //         (sorted[n_half - 1] + sorted[n_half]) / 2.0
-                    //     } else {
-                    //         sorted[n_sorted / 2]
-                    //     };
-                    //
-                    //     // calcualte average distance
-                    //     // let avg = sorted.iter().sum::<f64>() / n_sorted as f64;
-                    //
-                    //     // retain modules with distance within +/- 25% of median
-                    //     modules.retain(|_, m| (median - m.dist).abs() < median / 4.0);
-                    // }
-
-                    // proceed with calculating drone position if at least 3 modules retained
-                    if modules.len() < 3 {
-                        log::warn!("Not enough modules retained to compute solution");
-                    } else {
-                        // create lle coordinates
-                        let lles: HashMap<String, Lle<Wgs84>> =
-                            HashMap::from_iter(modules.iter().map(|(mac, m)| {
-                                (
-                                    mac.clone(),
-                                    Lle::<Wgs84>::new(
-                                        Degrees::new(m.lat),
-                                        Degrees::new(m.lon),
-                                        Meters::new(m.alt),
-                                    ),
-                                )
-                            }));
-
-                        // set reference for conversion to enu
-                        let refr = *lles.iter().next().unwrap().1;
-
-                        // calculate enu coordinates
-                        let enus: HashMap<String, Enu> = HashMap::from_iter(
-                            lles.into_iter()
-                                .map(|(n, lle)| (n, CoordinateSystem::lle_to_enu(&refr, &lle))),
-                        );
-
-                        let mut avg_solution = Point::default();
-                        let mut solution_counter = 0u32;
-
-                        // calculate average solution of the distance equation system for all triples
-                        for triple in modules.iter().combinations(3) {
-                            let f = |v: Vector3<f64>| {
-                                let enus = [
-                                    enus.get(triple[0].0).unwrap(),
-                                    enus.get(triple[1].0).unwrap(),
-                                    enus.get(triple[2].0).unwrap(),
-                                ];
-                                vector![
-                                    (v[0] - enus[0].east.as_float()).powi(2)
-                                        + (v[1] - enus[0].north.as_float()).powi(2)
-                                        + (v[2] - enus[0].up.as_float()).powi(2)
-                                        - triple[0].1.dist.powi(2),
-                                    (v[0] - enus[1].east.as_float()).powi(2)
-                                        + (v[1] - enus[1].north.as_float()).powi(2)
-                                        + (v[2] - enus[1].up.as_float()).powi(2)
-                                        - triple[1].1.dist.powi(2),
-                                    (v[0] - enus[2].east.as_float()).powi(2)
-                                        + (v[1] - enus[2].north.as_float()).powi(2)
-                                        + (v[2] - enus[2].up.as_float()).powi(2)
-                                        - triple[2].1.dist.powi(2),
-                                ]
-                            };
-                            let Ok(solution) = MultiVarNewtonFD::new(f)
-                                .with_tol(1e-12)
-                                .with_itermax(500)
-                                .solve(vector![100.0, 100.0, 100.0])
-                            else {
-                                continue;
-                            };
-
-                            avg_solution.x += solution.x;
-                            avg_solution.y += solution.y;
-                            avg_solution.z += solution.z;
-
-                            solution_counter += 1;
-                        }
-
-                        if solution_counter > 0 {
-                            avg_solution.x /= solution_counter as f64;
-                            avg_solution.y /= solution_counter as f64;
-                            avg_solution.z /= solution_counter as f64;
-
-                            let solution_lle = CoordinateSystem::enu_to_lle(
-                                &refr,
-                                &Enu {
-                                    east: Meters::new(avg_solution.x),
-                                    north: Meters::new(avg_solution.y),
-                                    up: Meters::new(avg_solution.z),
-                                },
-                            );
-
-                            log::debug!("{avg_solution:?}");
-                            log::info!("{solution_lle:?}");
-                            writeln!(
-                                csv,
-                                "{},{},{},{}",
-                                Utc::now(),
-                                solution_lle.latitude.as_float(),
-                                solution_lle.longitude.as_float(),
-                                solution_lle.elevation.as_float()
-                            )
-                            .unwrap();
-                        } else {
-                            log::warn!("Failed to calculate drone position");
-                        }
+                let (mut socket, _response) = match connect("ws://127.0.0.1:8080/andros/subscribe")
+                {
+                    Ok(c) => c,
+                    Err(e) => {
+                        log::error!("Website WebSocket connection error: {e}");
+                        sleep(Duration::from_millis(1000));
+                        continue;
                     }
-                } else {
-                    log::warn!("No detection");
+                };
+                log::info!("Website WebSocket connected");
+
+                sleep(Duration::from_secs(1));
+
+                match socket.send(tungstenite::Message::Text(
+                    format!("detection,{},{},{}", 52.1, 16.7, 21.2).into(),
+                )) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        log::error!("Error sending drone WebSocket message: {err}");
+                        continue;
+                    }
                 }
 
-                sleep(read_period.saturating_sub(start.elapsed()));
+                loop {
+                    let start = Instant::now();
+
+                    let mut lock = modules.lock();
+                    // retain recently updated modules
+                    lock.retain(|_, m| {
+                        m.updated.elapsed() < Duration::from_millis(250)
+                            && m.lon.is_finite()
+                            && m.lat.is_finite()
+                    });
+                    let modules = lock.clone();
+                    drop(lock);
+
+                    let detection = modules.iter().any(|(_, m)| m.drone);
+
+                    if detection {
+                        // remove outliers
+                        // if modules.len() >= 3 {
+                        //     // calculate median distance
+                        //     let sorted: Vec<f64> = modules
+                        //         .values()
+                        //         .map(|m| m.dist)
+                        //         .sorted_unstable_by(|a, b| a.total_cmp(b))
+                        //         .collect();
+                        //
+                        //     let n_sorted = sorted.len();
+                        //     let median = if n_sorted % 2 == 0 {
+                        //         let n_half = n_sorted / 2;
+                        //         (sorted[n_half - 1] + sorted[n_half]) / 2.0
+                        //     } else {
+                        //         sorted[n_sorted / 2]
+                        //     };
+                        //
+                        //     // calcualte average distance
+                        //     // let avg = sorted.iter().sum::<f64>() / n_sorted as f64;
+                        //
+                        //     // retain modules with distance within +/- 25% of median
+                        //     modules.retain(|_, m| (median - m.dist).abs() < median / 4.0);
+                        // }
+
+                        // proceed with calculating drone position if at least 3 modules retained
+                        if modules.len() < 3 {
+                            log::warn!("Not enough modules retained to compute solution");
+                        } else {
+                            // create lle coordinates
+                            let lles: HashMap<String, Lle<Wgs84>> =
+                                HashMap::from_iter(modules.iter().map(|(mac, m)| {
+                                    (
+                                        mac.clone(),
+                                        Lle::<Wgs84>::new(
+                                            Degrees::new(m.lat),
+                                            Degrees::new(m.lon),
+                                            Meters::new(m.alt),
+                                        ),
+                                    )
+                                }));
+
+                            // set reference for conversion to enu
+                            let refr = *lles.iter().next().unwrap().1;
+
+                            // calculate enu coordinates
+                            let enus: HashMap<String, Enu> =
+                                HashMap::from_iter(lles.into_iter().map(|(n, lle)| {
+                                    (n, CoordinateSystem::lle_to_enu(&refr, &lle))
+                                }));
+
+                            let mut avg_solution = Point::default();
+                            let mut solution_counter = 0u32;
+
+                            // calculate average solution of the distance equation system for all triples
+                            for triple in modules.iter().combinations(3) {
+                                let f = |v: Vector3<f64>| {
+                                    let enus = [
+                                        enus.get(triple[0].0).unwrap(),
+                                        enus.get(triple[1].0).unwrap(),
+                                        enus.get(triple[2].0).unwrap(),
+                                    ];
+                                    vector![
+                                        (v[0] - enus[0].east.as_float()).powi(2)
+                                            + (v[1] - enus[0].north.as_float()).powi(2)
+                                            + (v[2] - enus[0].up.as_float()).powi(2)
+                                            - triple[0].1.dist.powi(2),
+                                        (v[0] - enus[1].east.as_float()).powi(2)
+                                            + (v[1] - enus[1].north.as_float()).powi(2)
+                                            + (v[2] - enus[1].up.as_float()).powi(2)
+                                            - triple[1].1.dist.powi(2),
+                                        (v[0] - enus[2].east.as_float()).powi(2)
+                                            + (v[1] - enus[2].north.as_float()).powi(2)
+                                            + (v[2] - enus[2].up.as_float()).powi(2)
+                                            - triple[2].1.dist.powi(2),
+                                    ]
+                                };
+                                let Ok(solution) = MultiVarNewtonFD::new(f)
+                                    .with_tol(1e-12)
+                                    .with_itermax(500)
+                                    .solve(vector![100.0, 100.0, 100.0])
+                                else {
+                                    continue;
+                                };
+
+                                avg_solution.x += solution.x;
+                                avg_solution.y += solution.y;
+                                avg_solution.z += solution.z;
+
+                                solution_counter += 1;
+                            }
+
+                            if solution_counter > 0 {
+                                avg_solution.x /= solution_counter as f64;
+                                avg_solution.y /= solution_counter as f64;
+                                avg_solution.z /= solution_counter as f64;
+
+                                let solution_lle = CoordinateSystem::enu_to_lle(
+                                    &refr,
+                                    &Enu {
+                                        east: Meters::new(avg_solution.x),
+                                        north: Meters::new(avg_solution.y),
+                                        up: Meters::new(avg_solution.z),
+                                    },
+                                );
+
+                                log::debug!("{avg_solution:?}");
+                                log::info!("{solution_lle:?}");
+
+                                writeln!(
+                                    csv,
+                                    "{},{},{},{}",
+                                    Utc::now(),
+                                    solution_lle.latitude.as_float(),
+                                    solution_lle.longitude.as_float(),
+                                    solution_lle.elevation.as_float()
+                                )
+                                .unwrap();
+
+                                match socket.send(tungstenite::Message::Text(
+                                    format!(
+                                        "detection,{},{},{}",
+                                        solution_lle.latitude.as_float(),
+                                        solution_lle.longitude.as_float(),
+                                        solution_lle.elevation.as_float()
+                                    )
+                                    .into(),
+                                )) {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        log::error!("Error sending drone WebSocket message: {err}");
+                                        break;
+                                    }
+                                }
+                            } else {
+                                log::warn!("Failed to calculate drone position");
+                            }
+                        }
+                    } else {
+                        log::warn!("No detection");
+                    }
+
+                    sleep(read_period.saturating_sub(start.elapsed()));
+                }
             }
         }
     });
