@@ -86,7 +86,7 @@ fn main() {
                     }
                 }
                 match client
-                    .post("http://10.66.66.1:8080/andros/publish")
+                    .post("127.0.0.1:8080/andros/publish")
                     .body(format!("detection,{},{},{}", 52.1, 16.7, 21.2))
                     .send()
                     .await
