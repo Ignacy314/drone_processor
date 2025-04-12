@@ -247,7 +247,12 @@ fn main() {
                                 // }
                                 match client
                                     .post("http://10.66.66.1:8080/andros/publish")
-                                    .body(format!("detection,{},{},{}", 52.1, 16.7, 21.2))
+                                    .body(format!(
+                                        "detection,{},{},{}",
+                                        solution_lle.latitude.as_float(),
+                                        solution_lle.longitude.as_float(),
+                                        solution_lle.elevation.as_float()
+                                    ))
                                     .send()
                                 {
                                     Ok(_) => {}
