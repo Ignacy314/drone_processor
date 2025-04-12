@@ -229,6 +229,7 @@ fn main() {
                                     solution_lle.elevation.as_float()
                                 )
                                 .unwrap();
+                                csv.flush().unwrap();
 
                                 // match socket.send(tungstenite::Message::Text(
                                 //     format!(
