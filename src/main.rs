@@ -67,26 +67,28 @@ fn main() {
                     });
                     // remove outliers
 
-                    // calculate median distance
-                    let sorted: Vec<f64> = modules
-                        .values()
-                        .map(|m| m.dist)
-                        .sorted_unstable_by(|a, b| a.total_cmp(b))
-                        .collect();
+                    if modules.len() >= 3 {
+                        // calculate median distance
+                        let sorted: Vec<f64> = modules
+                            .values()
+                            .map(|m| m.dist)
+                            .sorted_unstable_by(|a, b| a.total_cmp(b))
+                            .collect();
 
-                    let n_sorted = sorted.len();
-                    let median = if n_sorted % 2 == 0 {
-                        let n_half = n_sorted / 2;
-                        (sorted[n_half - 1] + sorted[n_half]) / 2.0
-                    } else {
-                        sorted[n_sorted / 2]
-                    };
+                        let n_sorted = sorted.len();
+                        let median = if n_sorted % 2 == 0 {
+                            let n_half = n_sorted / 2;
+                            (sorted[n_half - 1] + sorted[n_half]) / 2.0
+                        } else {
+                            sorted[n_sorted / 2]
+                        };
 
-                    // calcualte average distance
-                    // let avg = sorted.iter().sum::<f64>() / n_sorted as f64;
+                        // calcualte average distance
+                        // let avg = sorted.iter().sum::<f64>() / n_sorted as f64;
 
-                    // retain modules with distance within +/- 25% of median
-                    // modules.retain(|_, m| (median - m.dist).abs() < median / 4.0);
+                        // retain modules with distance within +/- 25% of median
+                        // modules.retain(|_, m| (median - m.dist).abs() < median / 4.0);
+                    }
 
                     // proceed with calculating drone position if at least 3 modules retained
                     if modules.len() < 3 {
