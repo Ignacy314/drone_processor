@@ -198,7 +198,11 @@ fn main() {
 
                                 avg_solution.x += solution.x;
                                 avg_solution.y += solution.y;
-                                avg_solution.z += solution.z;
+                                if solution.z < 0.0 {
+                                    avg_solution.z -= solution.z;
+                                } else {
+                                    avg_solution.z += solution.z;
+                                }
 
                                 solution_counter += 1;
                             }
