@@ -85,16 +85,16 @@ fn main() {
                         continue;
                     }
                 }
-                match client
-                    .post("http://10.66.66.1:8080/andros/publish")
-                    .body(format!("detection,{},{},{}", 52.1, 16.7, 21.2))
-                    .send()
-                {
-                    Ok(_) => {}
-                    Err(err) => {
-                        log::warn!("Failed to make POST request: {err}");
-                    }
-                }
+                // match client
+                //     .post("http://10.66.66.1:8080/andros/publish")
+                //     .body(format!("detection,{},{},{}", 52.1, 16.7, 21.2))
+                //     .send()
+                // {
+                //     Ok(_) => {}
+                //     Err(err) => {
+                //         log::warn!("Failed to make POST request: {err}");
+                //     }
+                // }
 
                 loop {
                     let start = Instant::now();
