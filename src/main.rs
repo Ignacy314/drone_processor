@@ -258,15 +258,20 @@ fn main() {
                                     continue;
                                 };
 
-                                avg_solution.x += solution.x;
-                                avg_solution.y += solution.y;
-                                if solution.z < 0.0 {
-                                    avg_solution.z -= solution.z;
-                                } else {
-                                    avg_solution.z += solution.z;
-                                }
+                                if solution.x.is_finite()
+                                    && solution.y.is_finite()
+                                    && solution.z.is_finite()
+                                {
+                                    avg_solution.x += solution.x;
+                                    avg_solution.y += solution.y;
+                                    if solution.z < 0.0 {
+                                        avg_solution.z -= solution.z;
+                                    } else {
+                                        avg_solution.z += solution.z;
+                                    }
 
-                                solution_counter += 1;
+                                    solution_counter += 1;
+                                }
                             }
 
                             if solution_counter > 0 {
