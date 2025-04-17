@@ -39,6 +39,10 @@ struct Point {
 }
 
 impl Point {
+    fn new(x: f64, y: f64, z: f64) -> Point {
+        Point { x, y, z }
+    }
+
     #[inline]
     fn dist(&self, other: &Point) -> f64 {
         ((self.x - other.x).powi(2) + (self.y - other.y).powi(2) + (self.z - other.z).powi(2))
@@ -265,11 +269,8 @@ fn main() {
                                 avg_solution.x /= solution_counter as f64;
                                 avg_solution.y /= solution_counter as f64;
                                 avg_solution.z /= solution_counter as f64;
-                                let new_point = Point {
-                                    x: avg_solution.x,
-                                    y: avg_solution.y,
-                                    z: avg_solution.z,
-                                };
+                                let new_point =
+                                    Point::new(avg_solution.x, avg_solution.y, avg_solution.z);
 
                                 let new_point = if let Some((prev_time, prev_point)) = prev {
                                     let time_diff = start.duration_since(prev_time).as_secs_f64();
@@ -277,6 +278,7 @@ fn main() {
                                     let max_dist = 30.0 * time_diff;
 
                                     if time_diff > 1.0 {
+                                        points.clear();
                                         new_point
                                     } else {
                                         let dir = prev_point.diff(&new_point).norm();
@@ -294,7 +296,7 @@ fn main() {
 
                                 let avg_point = points
                                     .iter()
-                                    .fold(Point { x: 0.0, y: 0.0, z: 0.0 }, |a, b| a.add(b));
+                                    .fold(Point::new(0.0, 0.0, 0.0), |a, b| a.add(b));
                                 let n = points.len() as f64;
                                 let avg_point = avg_point.scale(1.0 / n);
 
@@ -428,39 +430,72 @@ fn main() {
     }
 }
 
-// #[cfg(test)]
-// mod test {
-//     use statrs::assert_almost_eq;
-//
-//     use crate::Point;
-//
-//     #[test]
-//     fn point() {
-//         let new_point = Point { x: 10.0, y: 10.0, z: 0.0 };
-//         let prev_point = Point { x: 100.0, y: 100.0, z: 0.0 };
-//
-//         let time_diff = 1.0;
-//
-//         let max_dist = 30.0 * time_diff;
-//
-//         let new_point = if time_diff > 1.0 {
-//             new_point
-//         } else {
-//             let dir = prev_point.diff(&new_point).norm();
-//             assert_almost_eq!(dir.x, -1.0 / 2f64.sqrt(), 1e-6);
-//             assert_almost_eq!(dir.y, -1.0 / 2f64.sqrt(), 1e-6);
-//             assert_eq!(dir.z, 0.0);
-//             let dist = prev_point.dist(&new_point).min(max_dist);
-//             assert_eq!(dist, 30.0);
-//
-//             prev_point.add(&dir.scale(dist))
-//         };
-//
-//         assert_eq!(new_point.x, 70.0);
-//         assert_eq!(new_point.y, 70.0);
-//         assert_eq!(new_point.z, 0.0);
-//     }
-// }
+#[cfg(test)]
+mod test {
+    use circular_buffer::CircularBuffer;
+    use statrs::assert_almost_eq;
+
+    use crate::Point;
+
+    // #[test]
+    // fn point() {
+    //     let new_point = Point { x: 10.0, y: 10.0, z: 0.0 };
+    //     let prev_point = Point { x: 100.0, y: 100.0, z: 0.0 };
+    //
+    //     let time_diff = 1.0;
+    //
+    //     let max_dist = 30.0 * time_diff;
+    //
+    //     let new_point = if time_diff > 1.0 {
+    //         new_point
+    //     } else {
+    //         let dir = prev_point.diff(&new_point).norm();
+    //         assert_almost_eq!(dir.x, -1.0 / 2f64.sqrt(), 1e-6);
+    //         assert_almost_eq!(dir.y, -1.0 / 2f64.sqrt(), 1e-6);
+    //         assert_eq!(dir.z, 0.0);
+    //         let dist = prev_point.dist(&new_point).min(max_dist);
+    //         assert_eq!(dist, 30.0);
+    //
+    //         prev_point.add(&dir.scale(dist))
+    //     };
+    //
+    //     assert_eq!(new_point.x, 70.0);
+    //     assert_eq!(new_point.y, 70.0);
+    //     assert_eq!(new_point.z, 0.0);
+    // }
+
+    #[test]
+    fn circ_avg() {
+        let mut points: CircularBuffer<20, Point> = CircularBuffer::new();
+        points.push_back(Point::new(1.0, 1.0, 1.0));
+
+        let avg_point = points
+            .iter()
+            .fold(Point { x: 0.0, y: 0.0, z: 0.0 }, |a, b| a.add(b));
+        let n = points.len() as f64;
+        let avg_point = avg_point.scale(1.0 / n);
+
+        assert_eq!(avg_point, Point::new(1.0, 1.0, 1.0));
+
+        points.push_back(Point::new(3.0, 3.0, 3.0));
+        let avg_point = points
+            .iter()
+            .fold(Point { x: 0.0, y: 0.0, z: 0.0 }, |a, b| a.add(b));
+        let n = points.len() as f64;
+        let avg_point = avg_point.scale(1.0 / n);
+
+        assert_eq!(avg_point, Point::new(2.0, 2.0, 2.0));
+
+        points.push_back(Point::new(5.0, 2.0, 2.0));
+        let avg_point = points
+            .iter()
+            .fold(Point { x: 0.0, y: 0.0, z: 0.0 }, |a, b| a.add(b));
+        let n = points.len() as f64;
+        let avg_point = avg_point.scale(1.0 / n);
+
+        assert_eq!(avg_point, Point::new(3.0, 2.0, 2.0));
+    }
+}
 
 // #[cfg(test)]
 // mod test {
