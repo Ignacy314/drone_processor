@@ -15,7 +15,7 @@ use eqsolver::multivariable::MultiVarNewtonFD;
 use flexi_logger::{Logger, with_thread};
 use geoconv::{CoordinateSystem, Degrees, Enu, Lle, Meters, Wgs84};
 use itertools::Itertools;
-use nalgebra::{ComplexField, Vector3, vector};
+use nalgebra::{Vector3, vector};
 use parking_lot::Mutex;
 use tungstenite::accept;
 
@@ -113,6 +113,8 @@ fn main() {
     let modules: Arc<Mutex<HashMap<String, Module>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let mut points: CircularBuffer<100, Point> = CircularBuffer::new();
+
+    let mut refr = None;
 
     spawn({
         let modules = modules.clone();
@@ -212,12 +214,14 @@ fn main() {
                                 }));
 
                             // set reference for conversion to enu
-                            let refr = *lles.iter().next().unwrap().1;
+                            if refr.is_none() {
+                                refr = Some(*lles.iter().next().unwrap().1);
+                            }
 
                             // calculate enu coordinates
                             let enus: HashMap<String, Enu> =
                                 HashMap::from_iter(lles.into_iter().map(|(n, lle)| {
-                                    (n, CoordinateSystem::lle_to_enu(&refr, &lle))
+                                    (n, CoordinateSystem::lle_to_enu(&refr.unwrap(), &lle))
                                 }));
 
                             let mut avg_solution = Point::default();
@@ -307,7 +311,7 @@ fn main() {
                                 };
 
                                 let solution_lle =
-                                    CoordinateSystem::enu_to_lle(&refr, &solution_enu);
+                                    CoordinateSystem::enu_to_lle(&refr.unwrap(), &solution_enu);
 
                                 log::debug!("{avg_solution:?}");
                                 log::info!("{solution_lle:?}");
@@ -433,7 +437,6 @@ fn main() {
 #[cfg(test)]
 mod test {
     use circular_buffer::CircularBuffer;
-    use statrs::assert_almost_eq;
 
     use crate::Point;
 
