@@ -162,7 +162,7 @@ fn main() {
                     let mut lock = modules.lock();
                     // retain recently updated modules
                     lock.retain(|_, m| {
-                        m.updated.elapsed() < Duration::from_millis(1000)
+                        m.updated.elapsed() < Duration::from_millis(250)
                             && m.lon.is_finite()
                             && m.lat.is_finite()
                     });
