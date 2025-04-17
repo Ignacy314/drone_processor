@@ -419,6 +419,8 @@ fn main() {
 
 #[cfg(test)]
 mod test {
+    use statrs::assert_almost_eq;
+
     use crate::Point;
 
     #[test]
@@ -434,6 +436,9 @@ mod test {
             new_point
         } else {
             let dir = prev_point.diff(&new_point).norm();
+            assert_almost_eq!(dir.x, -1.0 / 2f64.sqrt(), 1e-6);
+            assert_almost_eq!(dir.y, -1.0 / 2f64.sqrt(), 1e-6);
+            assert_eq!(dir.y, 0.0);
             let dist = prev_point.dist(&new_point).max(max_dist);
 
             prev_point.add(&dir.scale(dist))
