@@ -279,7 +279,7 @@ fn main() {
                                 let new_point = if let Some((prev_time, prev_point)) = prev {
                                     let time_diff = start.duration_since(prev_time).as_secs_f64();
 
-                                    let max_dist = 100.0 * time_diff;
+                                    let max_dist = 30.0 * time_diff;
 
                                     if time_diff > 1.0 {
                                         points.clear();
