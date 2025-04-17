@@ -112,7 +112,7 @@ fn main() {
 
     let modules: Arc<Mutex<HashMap<String, Module>>> = Arc::new(Mutex::new(HashMap::new()));
 
-    let mut points: CircularBuffer<100, Point> = CircularBuffer::new();
+    let mut points: CircularBuffer<20, Point> = CircularBuffer::new();
 
     let mut refr = None;
 
