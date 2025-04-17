@@ -10,6 +10,7 @@ use std::{
 };
 
 use chrono::Utc;
+use circular_buffer::CircularBuffer;
 use eqsolver::multivariable::MultiVarNewtonFD;
 use flexi_logger::{Logger, with_thread};
 use geoconv::{CoordinateSystem, Degrees, Enu, Lle, Meters, Wgs84};
@@ -106,6 +107,8 @@ fn main() {
     writeln!(csv, "time,lat,lon,alt").unwrap();
 
     let modules: Arc<Mutex<HashMap<String, Module>>> = Arc::new(Mutex::new(HashMap::new()));
+
+    let mut points: CircularBuffer<20, Point> = CircularBuffer::new();
 
     spawn({
         let modules = modules.clone();
@@ -287,10 +290,18 @@ fn main() {
 
                                 prev = Some((start, new_point));
 
+                                points.push_back(new_point);
+
+                                let avg_point = points
+                                    .iter()
+                                    .fold(Point { x: 0.0, y: 0.0, z: 0.0 }, |a, b| a.add(b));
+                                let n = points.len() as f64;
+                                let avg_point = avg_point.scale(1.0 / n);
+
                                 let solution_enu = Enu {
-                                    east: Meters::new(new_point.x),
-                                    north: Meters::new(new_point.y),
-                                    up: Meters::new(new_point.z),
+                                    east: Meters::new(avg_point.x),
+                                    north: Meters::new(avg_point.y),
+                                    up: Meters::new(avg_point.z),
                                 };
 
                                 let solution_lle =
