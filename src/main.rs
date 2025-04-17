@@ -14,7 +14,7 @@ use eqsolver::multivariable::MultiVarNewtonFD;
 use flexi_logger::{Logger, with_thread};
 use geoconv::{CoordinateSystem, Degrees, Enu, Lle, Meters, Wgs84};
 use itertools::Itertools;
-use nalgebra::{Vector3, vector};
+use nalgebra::{ComplexField, Vector3, vector};
 use parking_lot::Mutex;
 use tungstenite::accept;
 
@@ -35,6 +35,56 @@ struct Point {
     x: f64,
     y: f64,
     z: f64,
+}
+
+impl Point {
+    #[inline]
+    fn dist(&self, other: &Point) -> f64 {
+        ((self.x - other.x).powi(2) + (self.y - other.y).powi(2) + (self.z - other.z).powi(2))
+            .sqrt()
+    }
+
+    #[inline]
+    fn diff(&self, other: &Point) -> Point {
+        Point {
+            x: other.x - self.x,
+            y: other.y - self.y,
+            z: other.z - self.z,
+        }
+    }
+
+    #[inline]
+    fn magnitude(&self) -> f64 {
+        (self.x.powi(2) + self.y.powi(2) + self.z.powi(2)).sqrt()
+    }
+
+    #[inline]
+    fn norm(&self) -> Point {
+        let mag = self.magnitude();
+        Point {
+            x: self.x / mag,
+            y: self.y / mag,
+            z: self.z / mag,
+        }
+    }
+
+    #[inline]
+    fn add(&self, other: &Point) -> Point {
+        Point {
+            x: self.x + other.x,
+            y: self.y + other.y,
+            z: self.z + other.z,
+        }
+    }
+
+    #[inline]
+    fn scale(&self, scale: f64) -> Point {
+        Point {
+            x: self.x * scale,
+            y: self.y * scale,
+            z: self.z * scale,
+        }
+    }
 }
 
 fn main() {
@@ -59,6 +109,7 @@ fn main() {
 
     spawn({
         let modules = modules.clone();
+        let mut prev: Option<(Instant, Point)> = None;
         move || {
             let read_period = Duration::from_millis(50);
             loop {
@@ -211,15 +262,39 @@ fn main() {
                                 avg_solution.x /= solution_counter as f64;
                                 avg_solution.y /= solution_counter as f64;
                                 avg_solution.z /= solution_counter as f64;
+                                let new_point = Point {
+                                    x: avg_solution.x,
+                                    y: avg_solution.y,
+                                    z: avg_solution.z,
+                                };
 
-                                let solution_lle = CoordinateSystem::enu_to_lle(
-                                    &refr,
-                                    &Enu {
-                                        east: Meters::new(avg_solution.x),
-                                        north: Meters::new(avg_solution.y),
-                                        up: Meters::new(avg_solution.z),
-                                    },
-                                );
+                                let new_point = if let Some((prev_time, prev_point)) = prev {
+                                    let time_diff = start.duration_since(prev_time).as_secs_f64();
+
+                                    let max_dist = 30.0 * time_diff;
+
+                                    if time_diff > 1.0 {
+                                        new_point
+                                    } else {
+                                        let dir = prev_point.diff(&new_point).norm();
+                                        let dist = prev_point.dist(&new_point).max(max_dist);
+
+                                        prev_point.add(&dir.scale(dist))
+                                    }
+                                } else {
+                                    new_point
+                                };
+
+                                prev = Some((start, new_point));
+
+                                let solution_enu = Enu {
+                                    east: Meters::new(new_point.x),
+                                    north: Meters::new(new_point.y),
+                                    up: Meters::new(new_point.z),
+                                };
+
+                                let solution_lle =
+                                    CoordinateSystem::enu_to_lle(&refr, &solution_enu);
 
                                 log::debug!("{avg_solution:?}");
                                 log::info!("{solution_lle:?}");
