@@ -440,6 +440,7 @@ mod test {
             assert_almost_eq!(dir.y, -1.0 / 2f64.sqrt(), 1e-6);
             assert_eq!(dir.z, 0.0);
             let dist = prev_point.dist(&new_point).max(max_dist);
+            assert_eq!(dist, 30.0);
 
             prev_point.add(&dir.scale(dist))
         };
