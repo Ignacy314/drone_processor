@@ -241,7 +241,7 @@ fn main() {
                                 };
                                 let Ok(solution) = MultiVarNewtonFD::new(f)
                                     .with_tol(1e-12)
-                                    .with_itermax(500)
+                                    .with_itermax(100)
                                     .solve(vector![100.0, 100.0, 100.0])
                                 else {
                                     continue;
