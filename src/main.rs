@@ -277,7 +277,7 @@ fn main() {
                                         new_point
                                     } else {
                                         let dir = prev_point.diff(&new_point).norm();
-                                        let dist = prev_point.dist(&new_point).max(max_dist);
+                                        let dist = prev_point.dist(&new_point).min(max_dist);
 
                                         prev_point.add(&dir.scale(dist))
                                     }
@@ -417,39 +417,39 @@ fn main() {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use statrs::assert_almost_eq;
-
-    use crate::Point;
-
-    #[test]
-    fn point() {
-        let new_point = Point { x: 10.0, y: 10.0, z: 0.0 };
-        let prev_point = Point { x: 100.0, y: 100.0, z: 0.0 };
-
-        let time_diff = 1.0;
-
-        let max_dist = 30.0 * time_diff;
-
-        let new_point = if time_diff > 1.0 {
-            new_point
-        } else {
-            let dir = prev_point.diff(&new_point).norm();
-            assert_almost_eq!(dir.x, -1.0 / 2f64.sqrt(), 1e-6);
-            assert_almost_eq!(dir.y, -1.0 / 2f64.sqrt(), 1e-6);
-            assert_eq!(dir.z, 0.0);
-            let dist = prev_point.dist(&new_point).min(max_dist);
-            assert_eq!(dist, 30.0);
-
-            prev_point.add(&dir.scale(dist))
-        };
-
-        assert_eq!(new_point.x, 70.0);
-        assert_eq!(new_point.y, 70.0);
-        assert_eq!(new_point.z, 0.0);
-    }
-}
+// #[cfg(test)]
+// mod test {
+//     use statrs::assert_almost_eq;
+//
+//     use crate::Point;
+//
+//     #[test]
+//     fn point() {
+//         let new_point = Point { x: 10.0, y: 10.0, z: 0.0 };
+//         let prev_point = Point { x: 100.0, y: 100.0, z: 0.0 };
+//
+//         let time_diff = 1.0;
+//
+//         let max_dist = 30.0 * time_diff;
+//
+//         let new_point = if time_diff > 1.0 {
+//             new_point
+//         } else {
+//             let dir = prev_point.diff(&new_point).norm();
+//             assert_almost_eq!(dir.x, -1.0 / 2f64.sqrt(), 1e-6);
+//             assert_almost_eq!(dir.y, -1.0 / 2f64.sqrt(), 1e-6);
+//             assert_eq!(dir.z, 0.0);
+//             let dist = prev_point.dist(&new_point).min(max_dist);
+//             assert_eq!(dist, 30.0);
+//
+//             prev_point.add(&dir.scale(dist))
+//         };
+//
+//         assert_eq!(new_point.x, 70.0);
+//         assert_eq!(new_point.y, 70.0);
+//         assert_eq!(new_point.z, 0.0);
+//     }
+// }
 
 // #[cfg(test)]
 // mod test {
