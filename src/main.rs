@@ -252,26 +252,35 @@ fn main() {
                                 };
                                 let Ok(solution) = MultiVarNewtonFD::new(f)
                                     .with_tol(1e-12)
-                                    .with_itermax(100)
+                                    .with_itermax(500)
                                     .solve(vector![100.0, 100.0, 100.0])
                                 else {
                                     continue;
                                 };
 
-                                if solution.x.is_finite()
-                                    && solution.y.is_finite()
-                                    && solution.z.is_finite()
-                                {
-                                    avg_solution.x += solution.x;
-                                    avg_solution.y += solution.y;
-                                    if solution.z < 0.0 {
-                                        avg_solution.z -= solution.z;
-                                    } else {
-                                        avg_solution.z += solution.z;
-                                    }
-
-                                    solution_counter += 1;
+                                // if solution.x.is_finite()
+                                //     && solution.y.is_finite()
+                                //     && solution.z.is_finite()
+                                // {
+                                //     avg_solution.x += solution.x;
+                                //     avg_solution.y += solution.y;
+                                //     if solution.z < 0.0 {
+                                //         avg_solution.z -= solution.z;
+                                //     } else {
+                                //         avg_solution.z += solution.z;
+                                //     }
+                                //
+                                //     solution_counter += 1;
+                                // }
+                                avg_solution.x += solution.x;
+                                avg_solution.y += solution.y;
+                                if solution.z < 0.0 {
+                                    avg_solution.z -= solution.z;
+                                } else {
+                                    avg_solution.z += solution.z;
                                 }
+
+                                solution_counter += 1;
                             }
 
                             if solution_counter > 0 {
