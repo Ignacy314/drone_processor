@@ -105,22 +105,29 @@ pub fn simulate<P: AsRef<Path>>(
         })
         .collect();
 
+    log::debug!("sensors: {sensors:?}");
+
     let mut results = Vec::new();
     let mut ekf = Ekf::new(0.0, 0.0, max_dist);
 
     let mut counter = 0;
 
     loop {
-        let mut distances = desers.iter_mut().map(|d| d.next());
-        if distances.any(|d| d.is_none()) {
-            log::info!("Done: {counter}");
-            break;
+        let distances = desers.iter_mut().map(|d| d.next());
+
+        let mut done = false;
+        for (sensor, dist) in sensors.iter_mut().zip(distances) {
+            if let Some(dist) = dist {
+                sensor.dist = dist.unwrap();
+            } else {
+                log::info!("Done: {counter}");
+                done = true;
+                break;
+            }
         }
 
-        for (sensor, dist) in sensors.iter_mut().zip(distances) {
-            let distance = dist.unwrap().unwrap();
-            log::debug!("distance: {distance}");
-            sensor.dist = distance;
+        if done {
+            break;
         }
 
         let (x_pred, P_pred) = ekf.predict(0.05);

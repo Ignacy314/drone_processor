@@ -6,7 +6,7 @@ const INIT_VEL_STDDEV: f64 = 10.0;
 const PROCESS_NOISE_STDDEV: f64 = 5.0;
 const MEASUREMENT_STDDEV: f64 = 250.0;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Sensor {
     pub enu: Enu,
     pub dist: f64,
