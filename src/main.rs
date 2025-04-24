@@ -134,6 +134,7 @@ pub fn simulate<P: AsRef<Path>>(
         results.push((lle.latitude.as_float(), lle.longitude.as_float(), lle.elevation.as_float()));
     }
 
+    std::fs::create_dir_all(output_csv.as_ref().parent().unwrap()).unwrap();
     let mut csv = BufWriter::new(File::create(output_csv).unwrap());
     writeln!(csv, "lat,lon,alt").unwrap();
     for r in results {
