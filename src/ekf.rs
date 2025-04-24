@@ -59,7 +59,6 @@ impl Ekf {
             .copied()
             .collect();
         let n_sensors = filtered_sensors.len();
-        log::debug!("n_sensors: {n_sensors}");
         if n_sensors < 3 {
             self.x_est = x_pred;
             self.P_est = P_pred;
