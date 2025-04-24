@@ -51,23 +51,27 @@ impl Ekf {
     }
 
     pub fn update(&mut self, x_pred: Vector4<f64>, P_pred: Matrix4<f64>, sensors: &[Sensor]) {
-        let filtered_sensors = sensors.iter().filter(|s| {
-            s.dist > 0.0 && (self.max_dist.is_none() || s.dist <= self.max_dist.unwrap())
-        });
-        let n_sensors = filtered_sensors.clone().count();
+        let filtered_sensors: Vec<Sensor> = sensors
+            .iter()
+            .filter(|s| {
+                s.dist > 0.0 && (self.max_dist.is_none() || s.dist <= self.max_dist.unwrap())
+            })
+            .copied()
+            .collect();
+        let n_sensors = filtered_sensors.len();
         if n_sensors < 3 {
             self.x_est = x_pred;
             self.P_est = P_pred;
             return;
         }
 
-        let z = DVector::from_iterator(n_sensors, filtered_sensors.clone().map(|s| s.dist));
+        let z = DVector::from_iterator(n_sensors, filtered_sensors.iter().map(|s| s.dist));
         let mut h_x_pred = DVector::zeros(n_sensors);
         let mut H = DMatrix::zeros(n_sensors, 4);
         let R = DMatrix::from_diagonal_element(n_sensors, n_sensors, MEASUREMENT_STDDEV.powi(2));
         let (px, py) = (x_pred[0], x_pred[1]);
 
-        for (i, sensor) in filtered_sensors.enumerate() {
+        for (i, sensor) in filtered_sensors.iter().enumerate() {
             let (sx, sy) = (sensor.enu.east.as_float(), sensor.enu.north.as_float());
             let dist_pred = ((px - sx).powi(2) + (py - sy).powi(2)).sqrt().max(1e-6);
             h_x_pred[i] = dist_pred;

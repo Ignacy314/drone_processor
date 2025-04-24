@@ -108,10 +108,12 @@ pub fn simulate<P: AsRef<Path>>(
     let mut results = Vec::new();
     let mut ekf = Ekf::new(0.0, 0.0, max_dist);
 
+    let mut counter = 0;
+
     loop {
         let mut distances = desers.iter_mut().map(|d| d.next());
         if distances.any(|d| d.is_none()) {
-            log::info!("Done");
+            log::info!("Done: {counter}");
             break;
         }
         let distances = distances.map(|d| d.unwrap().unwrap());
@@ -132,6 +134,7 @@ pub fn simulate<P: AsRef<Path>>(
         let lle = CoordinateSystem::enu_to_lle(&ref_lle, &enu);
 
         results.push((lle.latitude.as_float(), lle.longitude.as_float(), lle.elevation.as_float()));
+        counter += 1;
     }
 
     std::fs::create_dir_all(output_csv.as_ref().parent().unwrap()).unwrap();
