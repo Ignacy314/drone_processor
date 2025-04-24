@@ -116,10 +116,11 @@ pub fn simulate<P: AsRef<Path>>(
             log::info!("Done: {counter}");
             break;
         }
-        let distances = distances.map(|d| d.unwrap().unwrap());
 
         for (sensor, dist) in sensors.iter_mut().zip(distances) {
-            sensor.dist = dist;
+            let distance = dist.unwrap().unwrap();
+            log::debug!("distance: {distance}");
+            sensor.dist = distance;
         }
 
         let (x_pred, P_pred) = ekf.predict(0.05);
