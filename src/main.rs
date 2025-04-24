@@ -1,103 +1,147 @@
+#![allow(non_snake_case)]
+use clap::{Parser, Subcommand};
 use std::{
-    collections::HashMap,
     fs::File,
     io::BufWriter,
     io::Write,
-    net::TcpListener,
-    sync::Arc,
-    thread::{sleep, spawn},
-    time::{Duration, Instant},
+    path::{Path, PathBuf},
 };
 
-use chrono::Utc;
-use circular_buffer::CircularBuffer;
-use eqsolver::multivariable::MultiVarNewtonFD;
+use ekf::{Ekf, Sensor};
 use flexi_logger::{Logger, with_thread};
 use geoconv::{CoordinateSystem, Degrees, Enu, Lle, Meters, Wgs84};
-use itertools::Itertools;
-use nalgebra::{Vector3, vector};
-use parking_lot::Mutex;
-use tungstenite::accept;
+use regex::Regex;
+use serde::Deserialize;
 
-#[derive(Clone, Copy)]
-struct Module {
-    // pub mac: String,
-    // pub ip: String,
-    pub lat: f64,
-    pub lon: f64,
-    pub alt: f64,
-    pub drone: bool,
-    pub dist: f64,
-    pub updated: Instant,
+mod ekf;
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+#[command(propagate_version = true)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
 }
 
-#[derive(Clone, Copy, Default, Debug, PartialEq)]
-struct Point {
-    x: f64,
-    y: f64,
-    z: f64,
+#[allow(clippy::enum_variant_names)]
+#[derive(Subcommand)]
+enum Commands {
+    LocationSim(LocationSimArgs),
 }
 
-impl Point {
-    fn new(x: f64, y: f64, z: f64) -> Point {
-        Point { x, y, z }
+#[derive(clap::Args)]
+struct LocationSimArgs {
+    #[arg(long)]
+    input_dir: String,
+    #[arg(long)]
+    modules_csv: String,
+    #[arg(long)]
+    output_csv: String,
+    #[arg(long)]
+    max_dist: Option<f64>,
+}
+
+#[allow(unused)]
+#[derive(Deserialize)]
+struct ModuleRecord {
+    module: i32,
+    lat: f64,
+    lon: f64,
+}
+
+pub fn simulate<P: AsRef<Path>>(
+    input_dir: P,
+    modules_csv: P,
+    output_csv: P,
+    max_dist: Option<f64>,
+) {
+    let re_csv = Regex::new(r".*\D(\d+)\.csv$").unwrap();
+
+    let mut csvs: Vec<PathBuf> = std::fs::read_dir(input_dir)
+        .unwrap()
+        .map(|d| d.unwrap().path())
+        .collect();
+    csvs.sort_unstable_by(|a, b| {
+        let a_num: i32 = re_csv.captures(a.to_str().unwrap()).unwrap()[1]
+            .parse()
+            .unwrap();
+        let b_num: i32 = re_csv.captures(b.to_str().unwrap()).unwrap()[1]
+            .parse()
+            .unwrap();
+        a_num.cmp(&b_num)
+    });
+
+    let mut modules_csv = csv::Reader::from_path(modules_csv).unwrap();
+
+    let mut modules = Vec::new();
+    for module in modules_csv.deserialize() {
+        let r: ModuleRecord = module.unwrap();
+        modules.push(r);
     }
 
-    #[inline]
-    fn dist(&self, other: &Point) -> f64 {
-        ((self.x - other.x).powi(2) + (self.y - other.y).powi(2) + (self.z - other.z).powi(2))
-            .sqrt()
+    assert_eq!(modules.len(), csvs.len());
+
+    let mut readers = Vec::new();
+    let mut desers = Vec::new();
+    for csv in csvs {
+        let reader = csv::Reader::from_path(csv).unwrap();
+        readers.push(reader);
+    }
+    for reader in readers.iter_mut() {
+        desers.push(reader.deserialize::<f64>());
     }
 
-    #[inline]
-    fn diff(&self, other: &Point) -> Point {
-        Point {
-            x: other.x - self.x,
-            y: other.y - self.y,
-            z: other.z - self.z,
+    let ref_lle = Lle::<Wgs84>::new(
+        Degrees::new(modules[0].lat),
+        Degrees::new(modules[0].lon),
+        Meters::new(0.0),
+    );
+    let mut sensors: Vec<Sensor> = modules
+        .iter()
+        .map(|m| {
+            let lle = Lle::<Wgs84>::new(Degrees::new(m.lat), Degrees::new(m.lon), Meters::new(0.0));
+            let enu = CoordinateSystem::lle_to_enu(&lle, &ref_lle);
+            Sensor { enu, dist: 0.0 }
+        })
+        .collect();
+
+    let mut results = Vec::new();
+    let mut ekf = Ekf::new(0.0, 0.0, max_dist);
+
+    loop {
+        let mut distances = desers.iter_mut().map(|d| d.next());
+        if distances.any(|d| d.is_none()) {
+            log::info!("Done");
+            break;
         }
-    }
+        let distances = distances.map(|d| d.unwrap().unwrap());
 
-    #[inline]
-    fn magnitude(&self) -> f64 {
-        (self.x.powi(2) + self.y.powi(2) + self.z.powi(2)).sqrt()
-    }
-
-    #[inline]
-    fn norm(&self) -> Point {
-        let mag = self.magnitude();
-        Point {
-            x: self.x / mag,
-            y: self.y / mag,
-            z: self.z / mag,
+        for (sensor, dist) in sensors.iter_mut().zip(distances) {
+            sensor.dist = dist;
         }
+
+        let (x_pred, P_pred) = ekf.predict(0.05);
+        ekf.update(x_pred, P_pred, &sensors);
+
+        let enu = Enu {
+            east: Meters::new(ekf.x_est[0]),
+            north: Meters::new(ekf.x_est[1]),
+            up: Meters::new(0.0),
+        };
+
+        let lle = CoordinateSystem::enu_to_lle(&ref_lle, &enu);
+
+        results.push((lle.latitude.as_float(), lle.longitude.as_float(), lle.elevation.as_float()));
     }
 
-    #[inline]
-    fn add(&self, other: &Point) -> Point {
-        Point {
-            x: self.x + other.x,
-            y: self.y + other.y,
-            z: self.z + other.z,
-        }
-    }
-
-    #[inline]
-    fn scale(&self, scale: f64) -> Point {
-        Point {
-            x: self.x * scale,
-            y: self.y * scale,
-            z: self.z * scale,
-        }
+    let mut csv = BufWriter::new(File::create(output_csv).unwrap());
+    writeln!(csv, "lat,lon,alt").unwrap();
+    for r in results {
+        writeln!(csv, "{},{},{}", r.0, r.1, r.2).unwrap();
     }
 }
 
 fn main() {
-    // env_logger::builder()
-    //     .filter_level(log::LevelFilter::Info)
-    //     .target(env_logger::Target::Stdout)
-    //     .build();
-
     Logger::try_with_env_or_str("info")
         .unwrap()
         .log_to_stderr()
@@ -106,413 +150,80 @@ fn main() {
         .start()
         .unwrap();
 
-    let mut csv =
-        BufWriter::new(File::create(format!("/home/ignacy/andros/{}.csv", Utc::now())).unwrap());
-    writeln!(csv, "time,lat,lon,alt").unwrap();
+    let cli = Cli::parse();
 
-    let modules: Arc<Mutex<HashMap<String, Module>>> = Arc::new(Mutex::new(HashMap::new()));
-
-    let mut points: CircularBuffer<20, Point> = CircularBuffer::new();
-
-    let mut refr = None;
-
-    spawn({
-        let modules = modules.clone();
-        let mut prev: Option<(Instant, Point)> = None;
-        move || {
-            let read_period = Duration::from_millis(50);
-            loop {
-                let client = reqwest::blocking::Client::new();
-                // let (mut socket, _response) = match connect("ws://127.0.0.1:8080/andros/subscribe")
-                // {
-                //     Ok(c) => c,
-                //     Err(e) => {
-                //         log::error!("Website WebSocket connection error: {e}");
-                //         sleep(Duration::from_millis(1000));
-                //         continue;
-                //     }
-                // };
-                // log::info!("Website WebSocket connected");
-
-                sleep(Duration::from_secs(1));
-
-                // match socket.send(tungstenite::Message::Text(
-                //     format!("detection,{},{},{}", 52.1, 16.7, 21.2).into(),
-                // )) {
-                //     Ok(_) => {}
-                //     Err(err) => {
-                //         log::error!("Error sending drone WebSocket message: {err}");
-                //         continue;
-                //     }
-                // }
-                // match client
-                //     .post("http://10.66.66.1:8080/andros/publish")
-                //     .body(format!("detection,{},{},{}", 52.1, 16.7, 21.2))
-                //     .send()
-                // {
-                //     Ok(_) => {}
-                //     Err(err) => {
-                //         log::warn!("Failed to make POST request: {err}");
-                //     }
-                // }
-
-                loop {
-                    let start = Instant::now();
-
-                    let mut lock = modules.lock();
-                    // retain recently updated modules
-                    lock.retain(|_, m| {
-                        m.updated.elapsed() < Duration::from_millis(250)
-                            && m.lon.is_finite()
-                            && m.lat.is_finite()
-                    });
-                    let modules = lock.clone();
-                    drop(lock);
-
-                    let detection = modules.iter().any(|(_, m)| m.drone);
-
-                    if detection {
-                        // remove outliers
-                        // if modules.len() >= 3 {
-                        //     // calculate median distance
-                        //     let sorted: Vec<f64> = modules
-                        //         .values()
-                        //         .map(|m| m.dist)
-                        //         .sorted_unstable_by(|a, b| a.total_cmp(b))
-                        //         .collect();
-                        //
-                        //     let n_sorted = sorted.len();
-                        //     let median = if n_sorted % 2 == 0 {
-                        //         let n_half = n_sorted / 2;
-                        //         (sorted[n_half - 1] + sorted[n_half]) / 2.0
-                        //     } else {
-                        //         sorted[n_sorted / 2]
-                        //     };
-                        //
-                        //     // calcualte average distance
-                        //     // let avg = sorted.iter().sum::<f64>() / n_sorted as f64;
-                        //
-                        //     // retain modules with distance within +/- 25% of median
-                        //     modules.retain(|_, m| (median - m.dist).abs() < median / 4.0);
-                        // }
-
-                        // proceed with calculating drone position if at least 3 modules retained
-                        if modules.len() < 3 {
-                            log::warn!("Not enough modules retained to compute solution");
-                        } else {
-                            // create lle coordinates
-                            let lles: HashMap<String, Lle<Wgs84>> =
-                                HashMap::from_iter(modules.iter().map(|(mac, m)| {
-                                    (
-                                        mac.clone(),
-                                        Lle::<Wgs84>::new(
-                                            Degrees::new(m.lat),
-                                            Degrees::new(m.lon),
-                                            Meters::new(m.alt),
-                                        ),
-                                    )
-                                }));
-
-                            // set reference for conversion to enu
-                            if refr.is_none() {
-                                refr = Some(*lles.iter().next().unwrap().1);
-                            }
-
-                            // calculate enu coordinates
-                            let enus: HashMap<String, Enu> =
-                                HashMap::from_iter(lles.into_iter().map(|(n, lle)| {
-                                    (n, CoordinateSystem::lle_to_enu(&refr.unwrap(), &lle))
-                                }));
-
-                            let mut avg_solution = Point::default();
-                            let mut solution_counter = 0u32;
-
-                            // calculate average solution of the distance equation system for all triples
-                            for triple in modules.iter().combinations(3) {
-                                let f = |v: Vector3<f64>| {
-                                    let enus = [
-                                        enus.get(triple[0].0).unwrap(),
-                                        enus.get(triple[1].0).unwrap(),
-                                        enus.get(triple[2].0).unwrap(),
-                                    ];
-                                    vector![
-                                        (v[0] - enus[0].east.as_float()).powi(2)
-                                            + (v[1] - enus[0].north.as_float()).powi(2)
-                                            + (v[2] - enus[0].up.as_float()).powi(2)
-                                            - triple[0].1.dist.powi(2),
-                                        (v[0] - enus[1].east.as_float()).powi(2)
-                                            + (v[1] - enus[1].north.as_float()).powi(2)
-                                            + (v[2] - enus[1].up.as_float()).powi(2)
-                                            - triple[1].1.dist.powi(2),
-                                        (v[0] - enus[2].east.as_float()).powi(2)
-                                            + (v[1] - enus[2].north.as_float()).powi(2)
-                                            + (v[2] - enus[2].up.as_float()).powi(2)
-                                            - triple[2].1.dist.powi(2),
-                                    ]
-                                };
-                                let Ok(solution) = MultiVarNewtonFD::new(f)
-                                    .with_tol(1e-12)
-                                    .with_itermax(500)
-                                    .solve(vector![100.0, 100.0, 100.0])
-                                else {
-                                    continue;
-                                };
-
-                                // if solution.x.is_finite()
-                                //     && solution.y.is_finite()
-                                //     && solution.z.is_finite()
-                                // {
-                                //     avg_solution.x += solution.x;
-                                //     avg_solution.y += solution.y;
-                                //     if solution.z < 0.0 {
-                                //         avg_solution.z -= solution.z;
-                                //     } else {
-                                //         avg_solution.z += solution.z;
-                                //     }
-                                //
-                                //     solution_counter += 1;
-                                // }
-                                avg_solution.x += solution.x;
-                                avg_solution.y += solution.y;
-                                if solution.z < 0.0 {
-                                    avg_solution.z -= solution.z;
-                                } else {
-                                    avg_solution.z += solution.z;
-                                }
-
-                                solution_counter += 1;
-                            }
-
-                            if solution_counter > 0 {
-                                avg_solution.x /= solution_counter as f64;
-                                avg_solution.y /= solution_counter as f64;
-                                avg_solution.z /= solution_counter as f64;
-                                let new_point =
-                                    Point::new(avg_solution.x, avg_solution.y, avg_solution.z);
-
-                                let new_point = if let Some((prev_time, prev_point)) = prev {
-                                    let time_diff = start.duration_since(prev_time).as_secs_f64();
-
-                                    let max_dist = 30.0 * time_diff;
-
-                                    if time_diff > 1.0 {
-                                        points.clear();
-                                        new_point
-                                    } else {
-                                        let dir = prev_point.diff(&new_point).norm();
-                                        let dist = prev_point.dist(&new_point).min(max_dist);
-
-                                        prev_point.add(&dir.scale(dist))
-                                    }
-                                } else {
-                                    new_point
-                                };
-
-                                prev = Some((start, new_point));
-
-                                points.push_back(new_point);
-
-                                let avg_point = points
-                                    .iter()
-                                    .fold(Point::new(0.0, 0.0, 0.0), |a, b| a.add(b));
-                                let n = points.len() as f64;
-                                let avg_point = avg_point.scale(1.0 / n);
-
-                                let solution_enu = Enu {
-                                    east: Meters::new(avg_point.x),
-                                    north: Meters::new(avg_point.y),
-                                    up: Meters::new(avg_point.z),
-                                };
-
-                                let solution_lle =
-                                    CoordinateSystem::enu_to_lle(&refr.unwrap(), &solution_enu);
-
-                                log::debug!("{avg_solution:?}");
-                                log::info!("{solution_lle:?}");
-
-                                writeln!(
-                                    csv,
-                                    "{},{},{},{}",
-                                    Utc::now(),
-                                    solution_lle.latitude.as_float(),
-                                    solution_lle.longitude.as_float(),
-                                    solution_lle.elevation.as_float()
-                                )
-                                .unwrap();
-                                csv.flush().unwrap();
-
-                                // match socket.send(tungstenite::Message::Text(
-                                //     format!(
-                                //         "detection,{},{},{}",
-                                //         solution_lle.latitude.as_float(),
-                                //         solution_lle.longitude.as_float(),
-                                //         solution_lle.elevation.as_float()
-                                //     )
-                                //     .into(),
-                                // )) {
-                                //     Ok(_) => {}
-                                //     Err(err) => {
-                                //         log::error!("Error sending drone WebSocket message: {err}");
-                                //         break;
-                                //     }
-                                // }
-                                match client
-                                    .post("http://10.66.66.1:8080/andros/publish")
-                                    .body(format!(
-                                        "detection,{},{},{}",
-                                        solution_lle.latitude.as_float(),
-                                        solution_lle.longitude.as_float(),
-                                        solution_lle.elevation.as_float()
-                                    ))
-                                    .send()
-                                {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        log::error!("Failed to make POST request: {err}");
-                                        break;
-                                    }
-                                }
-                            } else {
-                                log::warn!("Failed to calculate drone position");
-                            }
-                        }
-                    } else {
-                        log::warn!("No detection");
-                    }
-
-                    sleep(read_period.saturating_sub(start.elapsed()));
-                }
-            }
+    match cli.command {
+        Commands::LocationSim(args) => {
+            simulate(args.input_dir, args.modules_csv, args.output_csv, args.max_dist);
         }
-    });
-
-    let server = TcpListener::bind("10.66.66.1:3012").unwrap();
-    for stream in server.incoming() {
-        let modules = modules.clone();
-        spawn(move || {
-            // let callback = |req: &Request, mut response: Response| {
-            //     println!("Received a new ws handshake");
-            //     println!("The request's path is: {}", req.uri().path());
-            //     println!("The request's headers are:");
-            //     for (header, _value) in req.headers() {
-            //         println!("* {header}");
-            //     }
-            //
-            //     // Let's add an additional header to our response to the client.
-            //     let headers = response.headers_mut();
-            //     headers.append("MyCustomHeader", ":)".parse().unwrap());
-            //     headers.append("SOME_TUNGSTENITE_HEADER", "header_value".parse().unwrap());
-            //
-            //     Ok(response)
-            // };
-            let mut websocket = accept(stream.unwrap()).unwrap();
-            log::info!("WebSocket connection accepted");
-
-            loop {
-                let msg = websocket.read().unwrap();
-                if msg.is_binary() || msg.is_text() {
-                    // log::info!("Message: {msg}");
-
-                    let text = msg.to_text().unwrap();
-                    let fields: Vec<&str> = text.split("|").collect();
-
-                    let (mac, ip, lat, lon, drone, dist) = (
-                        fields[0],
-                        fields[1],
-                        fields[2].parse::<f64>().unwrap(),
-                        fields[3].parse::<f64>().unwrap(),
-                        fields[4].parse::<bool>().unwrap(),
-                        fields[5].parse::<f64>().unwrap(),
-                    );
-
-                    modules.lock().insert(
-                        mac.to_owned(),
-                        Module {
-                            // mac: mac.to_owned(),
-                            // ip: ip.to_owned(),
-                            lat,
-                            lon,
-                            alt: 0.0,
-                            drone,
-                            dist,
-                            updated: Instant::now(),
-                        },
-                    );
-
-                    log::debug!(
-                        "Message {{ mac: {mac}, ip: {ip}, lat: {lat}, lon: {lon}, drone: {drone}, dist: {dist} }}"
-                    )
-                }
-            }
-        });
     }
 }
 
-#[cfg(test)]
-mod test {
-    use circular_buffer::CircularBuffer;
-
-    use crate::Point;
-
-    // #[test]
-    // fn point() {
-    //     let new_point = Point { x: 10.0, y: 10.0, z: 0.0 };
-    //     let prev_point = Point { x: 100.0, y: 100.0, z: 0.0 };
-    //
-    //     let time_diff = 1.0;
-    //
-    //     let max_dist = 30.0 * time_diff;
-    //
-    //     let new_point = if time_diff > 1.0 {
-    //         new_point
-    //     } else {
-    //         let dir = prev_point.diff(&new_point).norm();
-    //         assert_almost_eq!(dir.x, -1.0 / 2f64.sqrt(), 1e-6);
-    //         assert_almost_eq!(dir.y, -1.0 / 2f64.sqrt(), 1e-6);
-    //         assert_eq!(dir.z, 0.0);
-    //         let dist = prev_point.dist(&new_point).min(max_dist);
-    //         assert_eq!(dist, 30.0);
-    //
-    //         prev_point.add(&dir.scale(dist))
-    //     };
-    //
-    //     assert_eq!(new_point.x, 70.0);
-    //     assert_eq!(new_point.y, 70.0);
-    //     assert_eq!(new_point.z, 0.0);
-    // }
-
-    #[test]
-    fn circ_avg() {
-        let mut points: CircularBuffer<20, Point> = CircularBuffer::new();
-        points.push_back(Point::new(1.0, 1.0, 1.0));
-
-        let avg_point = points
-            .iter()
-            .fold(Point { x: 0.0, y: 0.0, z: 0.0 }, |a, b| a.add(b));
-        let n = points.len() as f64;
-        let avg_point = avg_point.scale(1.0 / n);
-
-        assert_eq!(avg_point, Point::new(1.0, 1.0, 1.0));
-
-        points.push_back(Point::new(3.0, 3.0, 3.0));
-        let avg_point = points
-            .iter()
-            .fold(Point { x: 0.0, y: 0.0, z: 0.0 }, |a, b| a.add(b));
-        let n = points.len() as f64;
-        let avg_point = avg_point.scale(1.0 / n);
-
-        assert_eq!(avg_point, Point::new(2.0, 2.0, 2.0));
-
-        points.push_back(Point::new(5.0, 2.0, 2.0));
-        let avg_point = points
-            .iter()
-            .fold(Point { x: 0.0, y: 0.0, z: 0.0 }, |a, b| a.add(b));
-        let n = points.len() as f64;
-        let avg_point = avg_point.scale(1.0 / n);
-
-        assert_eq!(avg_point, Point::new(3.0, 2.0, 2.0));
-    }
-}
+// #[cfg(test)]
+// mod test {
+//     use circular_buffer::CircularBuffer;
+//
+//     use crate::Point;
+//
+//     // #[test]
+//     // fn point() {
+//     //     let new_point = Point { x: 10.0, y: 10.0, z: 0.0 };
+//     //     let prev_point = Point { x: 100.0, y: 100.0, z: 0.0 };
+//     //
+//     //     let time_diff = 1.0;
+//     //
+//     //     let max_dist = 30.0 * time_diff;
+//     //
+//     //     let new_point = if time_diff > 1.0 {
+//     //         new_point
+//     //     } else {
+//     //         let dir = prev_point.diff(&new_point).norm();
+//     //         assert_almost_eq!(dir.x, -1.0 / 2f64.sqrt(), 1e-6);
+//     //         assert_almost_eq!(dir.y, -1.0 / 2f64.sqrt(), 1e-6);
+//     //         assert_eq!(dir.z, 0.0);
+//     //         let dist = prev_point.dist(&new_point).min(max_dist);
+//     //         assert_eq!(dist, 30.0);
+//     //
+//     //         prev_point.add(&dir.scale(dist))
+//     //     };
+//     //
+//     //     assert_eq!(new_point.x, 70.0);
+//     //     assert_eq!(new_point.y, 70.0);
+//     //     assert_eq!(new_point.z, 0.0);
+//     // }
+//
+//     #[test]
+//     fn circ_avg() {
+//         let mut points: CircularBuffer<20, Point> = CircularBuffer::new();
+//         points.push_back(Point::new(1.0, 1.0, 1.0));
+//
+//         let avg_point = points
+//             .iter()
+//             .fold(Point { x: 0.0, y: 0.0, z: 0.0 }, |a, b| a.add(b));
+//         let n = points.len() as f64;
+//         let avg_point = avg_point.scale(1.0 / n);
+//
+//         assert_eq!(avg_point, Point::new(1.0, 1.0, 1.0));
+//
+//         points.push_back(Point::new(3.0, 3.0, 3.0));
+//         let avg_point = points
+//             .iter()
+//             .fold(Point { x: 0.0, y: 0.0, z: 0.0 }, |a, b| a.add(b));
+//         let n = points.len() as f64;
+//         let avg_point = avg_point.scale(1.0 / n);
+//
+//         assert_eq!(avg_point, Point::new(2.0, 2.0, 2.0));
+//
+//         points.push_back(Point::new(5.0, 2.0, 2.0));
+//         let avg_point = points
+//             .iter()
+//             .fold(Point { x: 0.0, y: 0.0, z: 0.0 }, |a, b| a.add(b));
+//         let n = points.len() as f64;
+//         let avg_point = avg_point.scale(1.0 / n);
+//
+//         assert_eq!(avg_point, Point::new(3.0, 2.0, 2.0));
+//     }
+// }
 
 // #[cfg(test)]
 // mod test {
