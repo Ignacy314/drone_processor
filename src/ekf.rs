@@ -77,14 +77,21 @@ impl Ekf {
         let mut h_x_pred = DVector::zeros(n_sensors);
         let mut H = DMatrix::zeros(n_sensors, 6);
         let R = DMatrix::from_diagonal_element(n_sensors, n_sensors, MEASUREMENT_STDDEV.powi(2));
-        let (px, py) = (x_pred[0], x_pred[1]);
+        let (px, py, pz) = (x_pred[0], x_pred[1], x_pred[2]);
 
         for (i, sensor) in filtered_sensors.iter().enumerate() {
-            let (sx, sy) = (-sensor.enu.east.as_float(), -sensor.enu.north.as_float());
-            let dist_pred = ((px - sx).powi(2) + (py - sy).powi(2)).sqrt().max(1e-6);
+            let (sx, sy, sz) = (
+                -sensor.enu.east.as_float(),
+                -sensor.enu.north.as_float(),
+                sensor.enu.up.as_float(),
+            );
+            let dist_pred = ((px - sx).powi(2) + (py - sy).powi(2) + (pz - sz).powi(2))
+                .sqrt()
+                .max(1e-6);
             h_x_pred[i] = dist_pred;
             H[(i, 0)] = (px - sx) / dist_pred;
             H[(i, 1)] = (py - sy) / dist_pred;
+            H[(i, 2)] = (pz - sz) / dist_pred;
         }
 
         let H_t = H.transpose();
