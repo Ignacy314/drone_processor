@@ -83,7 +83,7 @@ impl Ekf {
             let (sx, sy, sz) = (
                 -sensor.enu.east.as_float(),
                 -sensor.enu.north.as_float(),
-                -sensor.enu.up.as_float(),
+                sensor.enu.up.as_float(),
             );
             let dist_pred = ((px - sx).powi(2) + (py - sy).powi(2) + (pz - sz).powi(2))
                 .sqrt()
