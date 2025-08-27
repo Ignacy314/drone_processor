@@ -106,7 +106,7 @@ pub fn simulate<P: AsRef<Path>>(
         .collect();
 
     let mut results = Vec::new();
-    let mut ekf = Ekf::new(0.0, 0.0, 0.0, max_dist);
+    let mut ekf = Ekf::new(0.0, 0.0, 100.0, max_dist);
 
     let mut counter = 0;
 
