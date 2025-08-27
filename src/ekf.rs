@@ -75,7 +75,7 @@ impl Ekf {
 
         let z = DVector::from_iterator(n_sensors, filtered_sensors.iter().map(|s| s.dist));
         let mut h_x_pred = DVector::zeros(n_sensors);
-        let mut H = DMatrix::zeros(n_sensors, 4);
+        let mut H = DMatrix::zeros(n_sensors, 6);
         let R = DMatrix::from_diagonal_element(n_sensors, n_sensors, MEASUREMENT_STDDEV.powi(2));
         let (px, py) = (x_pred[0], x_pred[1]);
 
