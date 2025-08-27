@@ -1,9 +1,9 @@
 use geoconv::Enu;
 use nalgebra::{DMatrix, DVector, Matrix6, Vector6};
 
-const INIT_POS_STDDEV: f64 = 300.0;
-const INIT_VEL_STDDEV: f64 = 10.0;
-const PROCESS_NOISE_STDDEV: f64 = 5.0;
+const INIT_POS_STDDEV: f64 = 1000.0;
+const INIT_VEL_STDDEV: f64 = 100.0;
+const PROCESS_NOISE_STDDEV: f64 = 10.0;
 const MEASUREMENT_STDDEV: f64 = 250.0;
 
 #[derive(Clone, Copy, Debug)]
@@ -83,7 +83,7 @@ impl Ekf {
             let (sx, sy, sz) = (
                 -sensor.enu.east.as_float(),
                 -sensor.enu.north.as_float(),
-                sensor.enu.up.as_float(),
+                -sensor.enu.up.as_float(),
             );
             let dist_pred = ((px - sx).powi(2) + (py - sy).powi(2) + (pz - sz).powi(2))
                 .sqrt()
