@@ -72,7 +72,7 @@ impl Ekf {
         let (px, py) = (x_pred[0], x_pred[1]);
 
         for (i, sensor) in filtered_sensors.iter().enumerate() {
-            let (sx, sy) = (sensor.enu.east.as_float(), sensor.enu.north.as_float());
+            let (sx, sy) = (-sensor.enu.east.as_float(), -sensor.enu.north.as_float());
             let dist_pred = ((px - sx).powi(2) + (py - sy).powi(2)).sqrt().max(1e-6);
             h_x_pred[i] = dist_pred;
             H[(i, 0)] = (px - sx) / dist_pred;
