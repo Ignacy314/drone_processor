@@ -106,7 +106,7 @@ pub fn simulate<P: AsRef<Path>>(
         .collect();
 
     let mut results = Vec::new();
-    let mut ekf = Ekf::new(0.0, 0.0, max_dist);
+    let mut ekf = Ekf::new(0.0, 0.0, 0.0, max_dist);
 
     let mut counter = 0;
 
@@ -134,7 +134,7 @@ pub fn simulate<P: AsRef<Path>>(
         let enu = Enu {
             east: Meters::new(ekf.x_est[0]),
             north: Meters::new(ekf.x_est[1]),
-            up: Meters::new(0.0),
+            up: Meters::new(ekf.x_est[2]),
         };
 
         let lle = CoordinateSystem::enu_to_lle(&ref_lle, &enu);
