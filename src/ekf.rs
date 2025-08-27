@@ -3,8 +3,8 @@ use nalgebra::{DMatrix, DVector, Matrix6, Vector6};
 
 const INIT_POS_STDDEV: f64 = 1500.0;
 const INIT_VEL_STDDEV: f64 = 15.0;
-const PROCESS_NOISE_STDDEV: f64 = 0.1;
-const MEASUREMENT_STDDEV: f64 = 250.0;
+const PROCESS_NOISE_STDDEV: f64 = 1.0;
+const MEASUREMENT_STDDEV: f64 = 100.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Sensor {
@@ -35,9 +35,9 @@ impl Ekf {
         #[rustfmt::skip]
         let F = Box::new(|dt: f64| {
             Matrix6::new(
-                1.0, 0.0, 0.0, dt, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0, dt, 0.0,
-                0.0, 0.0, 1.0, 0.0, 0.0, dt,
+                1.0, 0.0, 0.0, dt , 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0, dt , 0.0,
+                0.0, 0.0, 1.0, 0.0, 0.0, dt ,
                 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
                 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
                 0.0, 0.0, 0.0, 0.0, 0.0, 1.0
