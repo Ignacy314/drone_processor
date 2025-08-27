@@ -1,10 +1,10 @@
 use geoconv::Enu;
 use nalgebra::{DMatrix, DVector, Matrix4, Vector4};
 
-const INIT_POS_STDDEV: f64 = 1500.0;
-const INIT_VEL_STDDEV: f64 = 15.0;
-const PROCESS_NOISE_STDDEV: f64 = 1.0;
-const MEASUREMENT_STDDEV: f64 = 150.0;
+const INIT_POS_STDDEV: f64 = 250.0;
+const INIT_VEL_STDDEV: f64 = 10.0;
+const PROCESS_NOISE_STDDEV: f64 = 0.5;
+const MEASUREMENT_STDDEV: f64 = 100.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Sensor {
