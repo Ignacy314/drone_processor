@@ -27,6 +27,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     LocationSim(LocationSimArgs),
+    LocationI2sSim(LocationSimArgs),
 }
 
 #[derive(clap::Args)]
@@ -296,6 +297,9 @@ fn main() {
     match cli.command {
         Commands::LocationSim(args) => {
             simulate(args.input_dir, args.modules_csv, args.output_csv, args.max_dist);
+        }
+        Commands::LocationI2sSim(args) => {
+            simulate_i2s(args.input_dir, args.modules_csv, args.output_csv, args.max_dist);
         }
     }
 }
