@@ -151,6 +151,137 @@ pub fn simulate<P: AsRef<Path>>(
     }
 }
 
+#[derive(Deserialize, Default, Clone, Copy, Debug)]
+pub struct AnglesRecord {
+    dist_h: f64,
+    angle_h: f64,
+    dist_v: f64,
+    angle_v: f64,
+    dist_real: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct AnglesSensor {
+    pub enu: Enu,
+    pub data: AnglesRecord,
+}
+
+pub fn simulate_i2s<P: AsRef<Path>>(
+    input_dir: P,
+    modules_csv: P,
+    output_csv: P,
+    max_dist: Option<f64>,
+) {
+    let re_csv = Regex::new(r".*\D(\d+)\.csv$").unwrap();
+
+    let mut csvs: Vec<PathBuf> = std::fs::read_dir(input_dir)
+        .unwrap()
+        .map(|d| d.unwrap().path())
+        .collect();
+    csvs.sort_unstable_by(|a, b| {
+        let a_num: i32 = re_csv.captures(a.to_str().unwrap()).unwrap()[1]
+            .parse()
+            .unwrap();
+        let b_num: i32 = re_csv.captures(b.to_str().unwrap()).unwrap()[1]
+            .parse()
+            .unwrap();
+        a_num.cmp(&b_num)
+    });
+
+    let mut modules_csv = csv::Reader::from_path(modules_csv).unwrap();
+
+    let mut modules = Vec::new();
+    for module in modules_csv.deserialize() {
+        let r: ModuleRecord = module.unwrap();
+        modules.push(r);
+    }
+
+    assert_eq!(modules.len(), csvs.len());
+
+    let mut readers = Vec::new();
+    let mut desers = Vec::new();
+    for csv in csvs {
+        let reader = csv::Reader::from_path(csv).unwrap();
+        readers.push(reader);
+    }
+    for reader in readers.iter_mut() {
+        desers.push(reader.deserialize::<AnglesRecord>());
+    }
+
+    let ref_lle = Lle::<Wgs84>::new(
+        Degrees::new(modules[0].lat),
+        Degrees::new(modules[0].lon),
+        Meters::new(0.0),
+    );
+    let mut sensors: Vec<AnglesSensor> = modules
+        .iter()
+        .map(|m| {
+            let lle = Lle::<Wgs84>::new(Degrees::new(m.lat), Degrees::new(m.lon), Meters::new(0.0));
+            let enu = CoordinateSystem::lle_to_enu(&lle, &ref_lle);
+            AnglesSensor {
+                enu,
+                data: AnglesRecord::default(),
+            }
+        })
+        .collect();
+
+    let mut results = Vec::new();
+
+    let mut counter = 0;
+
+    loop {
+        let records = desers.iter_mut().map(|d| d.next());
+
+        let mut done = false;
+        for (sensor, dist) in sensors.iter_mut().zip(records) {
+            if let Some(dist) = dist {
+                sensor.data = dist.unwrap();
+            } else {
+                log::info!("Done: {counter}");
+                done = true;
+                break;
+            }
+        }
+
+        if done {
+            break;
+        }
+
+        let enus = sensors.iter().map(|s| {
+            let r = (s.data.dist_h + s.data.dist_v) / 2.0;
+            let h_angle = (180.0 - s.data.angle_h).to_radians();
+            let x = r * h_angle.cos();
+            let y = r * h_angle.sin();
+            Enu {
+                east: Meters::new(x + s.enu.east.as_float()),
+                north: Meters::new(y + s.enu.north.as_float()),
+                up: Meters::new(0.0),
+            }
+        });
+
+        let (count, sum_x, sum_y) = enus.fold((0, 0.0, 0.0), |(count, sum_x, sum_y), enu| {
+            (count + 1, sum_x + enu.east.as_float(), sum_y + enu.north.as_float())
+        });
+        let enu = Enu {
+            east: Meters::new(sum_x / count as f64),
+            north: Meters::new(sum_y / count as f64),
+            up: Meters::new(0.0),
+        };
+
+        let lle = CoordinateSystem::enu_to_lle(&ref_lle, &enu);
+
+        results.push((lle.latitude.as_float(), lle.longitude.as_float(), lle.elevation.as_float()));
+        counter += 1;
+    }
+
+    std::fs::create_dir_all(output_csv.as_ref().parent().unwrap()).unwrap();
+    let mut csv = BufWriter::new(File::create(output_csv).unwrap());
+    writeln!(csv, "lat,lon,alt").unwrap();
+    for r in results {
+        writeln!(csv, "{},{},{}", r.0, r.1, r.2).unwrap();
+    }
+}
+
 fn main() {
     Logger::try_with_env_or_str("info")
         .unwrap()
