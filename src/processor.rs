@@ -255,9 +255,9 @@ pub fn run(ws_in: &str, ws_out: String) {
                         },
                     );
 
-                    log::debug!(
-                        "Message {{ mac: {mac}, ip: {ip}, lat: {lat}, lon: {lon}, drone: {drone}, dist: {dist} }}"
-                    )
+                    // log::debug!(
+                    //     "Message {{ mac: {mac}, ip: {ip}, lat: {lat}, lon: {lon}, drone: {drone}, dist: {dist} }}"
+                    // )
                 }
             }
         });
