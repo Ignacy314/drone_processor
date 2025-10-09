@@ -81,6 +81,7 @@ pub fn run(ws_in: &str, ws_out: String) {
                 //     }
                 // }
 
+                let mut last_predict = Instant::now();
                 loop {
                     let start = Instant::now();
 
@@ -151,7 +152,10 @@ pub fn run(ws_in: &str, ws_out: String) {
                                 })
                                 .collect();
 
-                            let (x_pred, P_pred) = ekf.predict(0.05);
+                            let dt = last_predict.elapsed().as_secs_f64();
+                            log::info!("predict dt = {dt}");
+                            let (x_pred, P_pred) = ekf.predict(dt);
+                            last_predict = Instant::now();
                             ekf.update(x_pred, P_pred, &sensors);
 
                             let enu = Enu {
