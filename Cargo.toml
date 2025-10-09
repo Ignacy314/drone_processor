@@ -4,19 +4,19 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-chrono = "0.4.40"
-circular-buffer = "1.1.0"
-env_logger = "0.11.8"
-eqsolver = "0.2.0"
+# chrono = "0.4.40"
+# circular-buffer = "1.1.0"
+# env_logger = "0.11.8"
+# eqsolver = "0.2.0"
 flexi_logger = "0.30.1"
 geoconv = "0.4.6"
-itertools = "0.14.0"
+# itertools = "0.14.0"
 log = "0.4.27"
 nalgebra = "0.33.2"
 parking_lot = "0.12.3"
 regex = "1.11.1"
-reqwest = { version = "0.12.15", features = ["blocking"] }
-statrs = "0.18.0"
+# reqwest = { version = "0.12.15", features = ["blocking"] }
+# statrs = "0.18.0"
 tungstenite = "0.26.2"
 serde = { version = "1.0.219", features = ["derive"] }
 csv = "1.3.1"
