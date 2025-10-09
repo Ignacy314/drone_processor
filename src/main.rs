@@ -14,6 +14,7 @@ use regex::Regex;
 use serde::Deserialize;
 
 mod ekf;
+mod processor;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -28,6 +29,7 @@ struct Cli {
 enum Commands {
     LocationSim(LocationSimArgs),
     LocationI2sSim(LocationSimArgs),
+    Processor(ProcessorArgs),
 }
 
 #[derive(clap::Args)]
@@ -40,6 +42,14 @@ struct LocationSimArgs {
     output_csv: String,
     #[arg(long)]
     max_dist: Option<f64>,
+}
+
+#[derive(clap::Args)]
+struct ProcessorArgs {
+    #[arg(long)]
+    ws_in: String,
+    #[arg(long)]
+    ws_out: String,
 }
 
 #[allow(unused)]
@@ -300,6 +310,9 @@ fn main() {
         }
         Commands::LocationI2sSim(args) => {
             simulate_i2s(args.input_dir, args.modules_csv, args.output_csv, args.max_dist);
+        }
+        Commands::Processor(args) => {
+            processor::run(&args.ws_in, args.ws_out);
         }
     }
 }
