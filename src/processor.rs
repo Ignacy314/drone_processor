@@ -193,7 +193,7 @@ pub fn run(ws_in: &str, ws_out: String) {
                     }
 
                     let sleep_time = read_period.saturating_sub(start.elapsed());
-                    log::debug!("Sleep for {}", sleep_time.as_millis());
+                    log::debug!("Sleep for {}", sleep_time.as_micros());
                     sleep(sleep_time);
                 }
             }
