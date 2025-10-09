@@ -44,7 +44,7 @@ pub fn run(ws_in: &str, ws_out: String) {
     spawn({
         let modules = modules.clone();
         move || {
-            let read_period = Duration::from_millis(100);
+            let read_period = Duration::from_millis(50);
             let mut ref_lle = None;
             let mut ekf = Ekf::new(0.0, 0.0, None);
             loop {
@@ -192,7 +192,9 @@ pub fn run(ws_in: &str, ws_out: String) {
                         log::warn!("No detection");
                     }
 
-                    sleep(read_period.saturating_sub(start.elapsed()));
+                    let sleep_time = read_period.saturating_sub(start.elapsed());
+                    log::debug!("Sleep for {}", sleep_time.as_millis());
+                    sleep(sleep_time);
                 }
             }
         }
