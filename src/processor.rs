@@ -44,7 +44,7 @@ pub fn run(ws_in: &str, ws_out: String) {
     spawn({
         let modules = modules.clone();
         move || {
-            let read_period = Duration::from_millis(50);
+            let read_period = Duration::from_millis(100);
             let mut ref_lle = None;
             let mut ekf = Ekf::new(0.0, 0.0, None);
             loop {
